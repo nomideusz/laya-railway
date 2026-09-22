@@ -173,4 +173,7 @@ if __name__ == "__main__":
     LOGGING_CONFIG["handlers"]["default"]["stream"] = "ext://sys.stdout"  # Railway shows stderr as errors
     # "" = every interface, IPv4 and IPv6. Railway's private network is IPv6-only, and asyncio
     # makes a "::" listener IPv6-only, which would shut out IPv4 clients.
-    uvicorn.run(app, host="", port=int(os.environ.get("PORT", "8080")), log_config=LOGGING_CONFIG)
+    # Railway's edge reuses idle connections to the app. If uvicorn closes one first (its default
+    # keep-alive is 5 s), a request the edge sends at that moment is lost and the caller gets a 502.
+    uvicorn.run(app, host="", port=int(os.environ.get("PORT", "8080")), log_config=LOGGING_CONFIG,
+                timeout_keep_alive=3600)
