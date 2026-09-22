@@ -1,9 +1,7 @@
 FROM python:3.12-slim
 
-# MALLOC_ARENA_MAX: glibc gives each of the server's worker threads its own heap and never
-# hands them back, so resident memory crept up ~0.8 GB under concurrent load without it.
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    HF_HUB_DISABLE_TELEMETRY=1 USE_TF=0 MALLOC_ARENA_MAX=2
+    HF_HUB_DISABLE_TELEMETRY=1 USE_TF=0
 
 WORKDIR /app
 COPY requirements.txt .

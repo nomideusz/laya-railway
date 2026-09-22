@@ -60,13 +60,13 @@ Interactive docs, where you can authorize with the key and try requests, are at 
 
 | `LAYA_MODELS` | Memory | Throughput on 8 vCPU |
 | --- | --- | --- |
-| `english,multilingual` (default) | 3.4 GB idle, up to ~3.9 GB busy | 3–11 calls/s, depending on the checkpoint |
-| `multilingual` | ~2 GB | ~11 calls/s |
-| `english` | ~2.4 GB | ~3 calls/s |
+| `english,multilingual` (default) | ~3.4 GB | 3.5–12 calls/s, depending on the checkpoint |
+| `multilingual` | ~1.7 GB | ~12 calls/s |
+| `english` | ~2 GB | ~3.5 calls/s |
 
-`multilingual` alone roughly halves the bill and handles English too. Upstream reports the English checkpoint is more accurate on English text. Calls are answered one at a time, because each one already uses every CPU the service has, so bursts queue up rather than competing. Boot takes about a minute while the checkpoints load.
+`multilingual` alone halves the memory and handles English too. Upstream reports the English checkpoint is more accurate on English text. Calls are answered one at a time, because each one already uses every CPU the service has, so bursts queue up rather than competing. Memory stays flat under load. Boot takes under a minute while the checkpoints load.
 
-**Know the limits before you switch.** Laya is not Jev. Upstream's benchmarks show it ahead on some tasks and behind on others, and third-party comparisons vary, so check it against a few hundred of your own labelled examples first. Text past 512 tokens (English) or 1024 tokens (multilingual) is cut off, not rejected. `usage.output_tokens` is always 0, as with Jev. There are no rate limits beyond what your CPUs can do.
+**Know the limits before you switch.** Laya is not Jev. Upstream's benchmarks show it ahead on some tasks and behind on others, and third-party comparisons vary, so check it against a few hundred of your own labelled examples first. Text past 512 tokens (English) or 1024 tokens (multilingual) is cut off, not rejected. On the English checkpoint, confidence for choice questions with 11 or more options is uncalibrated; laya notes this in the boot log. `usage.output_tokens` is always 0, as with Jev. There are no rate limits beyond what your CPUs can do.
 
 ## Why Deploy Laya on Railway?
 

@@ -3,12 +3,14 @@
 POST /v1/systemone takes the body TypeSafe's endpoint takes and answers in the same shape,
 so the TypeSafe SDKs work unchanged once TYPESAFE_BASE_URL points here.
 """
+import asyncio
 import ctypes
 import gc
 import hmac
 import os
-import threading
 import time
+import warnings
+from concurrent.futures import ThreadPoolExecutor
 from typing import Annotated, Any, Literal
 
 import torch
@@ -45,7 +47,8 @@ def cpu_quota() -> int:
 
 
 torch.set_num_threads(int(os.environ.get("LAYA_THREADS") or cpu_quota()))
-trim = ctypes.CDLL("libc.so.6").malloc_trim  # hands freed heap back to the OS; glibc keeps it otherwise
+# Railway shows stderr as errors, and laya's load-time warnings are notes, not failures.
+warnings.showwarning = lambda message, category, *_: print("%s: %s" % (category.__name__, message))
 
 LOADED = [normalise_name(n) for n in os.environ.get("LAYA_MODELS", "english,multilingual").split(",") if n.strip()]
 router = Router(models={"english": (MODELS_DIR, None),
@@ -58,12 +61,14 @@ for name in sorted(LOADED, key=lambda n: n != "multilingual"):
     started = time.monotonic()
     router.load(name)
     gc.collect()
-    trim(0)  # the load's scratch buffers
+    ctypes.CDLL("libc.so.6").malloc_trim(0)  # hand the load's scratch buffers back to the OS
     print("loaded %s in %.0fs" % (name, time.monotonic() - started))
 print("serving %s with %d threads" % (", ".join(LOADED), torch.get_num_threads()))
 
-# One forward pass at a time: each already uses every thread torch has.
-inference = threading.Lock()
+# One thread runs every forward pass: one at a time, since each already uses every thread torch
+# has, and always the same thread, so its heap is reused. Spread over the server's worker threads,
+# memory grew ~0.5 GB under load; this way it stays flat.
+inference = ThreadPoolExecutor(1)
 
 Text = str | dict[str, Any] | list[Any]
 
@@ -119,7 +124,8 @@ def checkpoint(req: SystemOneRequest, questions: dict) -> dict:
         raise HTTPException(422, "unknown model %r; use laya-auto (or a TypeSafe name such as jev-latest) "
                                  "or one of %s" % (req.model, ", ".join("laya-" + n for n in LOADED))) from None
     if name not in LOADED:
-        raise HTTPException(422, "checkpoint %r is not loaded here; add it to LAYA_MODELS" % name)
+        raise HTTPException(422, "checkpoint %r is not loaded here; LAYA_MODELS loads %s"
+                                 % (name, ", ".join("laya-" + n for n in LOADED)))
     return {"model": name, "reason": "explicit model=%r" % req.model}
 
 
@@ -147,13 +153,12 @@ def models():
 
 
 @app.post("/v1/systemone", dependencies=[Depends(authorized)])
-def system_one(req: SystemOneRequest):
+async def system_one(req: SystemOneRequest):
     questions = {qid: q.model_dump() for qid, q in req.questions.items()}
     decision = checkpoint(req, questions)
     try:
-        with inference:
-            result = router.load(decision["model"]).system_one(req.state, questions)
-            trim(0)  # the forward pass's activations; without it memory crept ~1 GB under load
+        result = await asyncio.get_running_loop().run_in_executor(
+            inference, router.load(decision["model"]).system_one, req.state, questions)
     except ValueError as e:  # e.g. more options than the checkpoint's option budget holds
         raise HTTPException(422, str(e)) from None
     result["model"] = "laya-" + decision["model"]
