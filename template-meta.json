@@ -1,0 +1,8 @@
+{
+  "name": "Laya | Self-Hosted Jev-Compatible Decision API",
+  "short_name": "Laya",
+  "description": "Open-weights Laya decision model behind a TypeSafe/Jev-compatible API",
+  "category": "AI/ML",
+  "image": "https://raw.githubusercontent.com/NandhaKishorM/laya/573e5b62696ba441230cd6be71d593331b5d23af/assets/logo-mark.svg",
+  "card_desc": "Laya's open decision model behind TypeSafe's /v1/systemone API, so Jev SDK code runs on your own server."
+}
