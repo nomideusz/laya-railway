@@ -56,11 +56,11 @@ Interactive docs, where you can authorize with the key and try requests, are at 
 
 **Models.** `laya-auto` routes each request, and TypeSafe names such as `jev-latest` (the SDK default) are treated as `laya-auto`, so existing code needs no changes. `laya-english` and `laya-multilingual` force one checkpoint. Each answer includes a `routing` field saying which checkpoint answered and why.
 
-**Memory and plan.** A Hobby or Pro plan is needed, because a checkpoint needs more memory while loading than Trial or Free allow. `LAYA_MODELS` picks what gets loaded:
+**Memory and plan.** A Hobby or Pro plan is needed, because a checkpoint needs more memory while loading than Trial or Free allow. On those plans the service still starts, and every call returns a 503 that says so. `LAYA_MODELS` picks what gets loaded:
 
 | `LAYA_MODELS` | Memory | Throughput on 8 vCPU |
 | --- | --- | --- |
-| `english,multilingual` (default) | ~3.4 GB | 3.5–12 calls/s, depending on the checkpoint |
+| `english,multilingual` (default) | ~3.4 GB, peaking at ~4.3 GB while loading | 3.5–12 calls/s, depending on the checkpoint |
 | `multilingual` | ~1.7 GB | ~12 calls/s |
 | `english` | ~2 GB | ~3.5 calls/s |
 

@@ -46,15 +46,33 @@ def cpu_quota() -> int:
     return os.cpu_count() or 1
 
 
+def memory_limit() -> float:
+    """GB of RAM this container may use."""
+    try:
+        limit = open("/sys/fs/cgroup/memory.max").read().strip()
+        if limit != "max":
+            return int(limit) / 1e9
+    except (OSError, ValueError):
+        pass
+    return float("inf")
+
+
 torch.set_num_threads(int(os.environ.get("LAYA_THREADS") or cpu_quota()))
 # Railway shows stderr as errors, and laya's load-time warnings are notes, not failures.
 warnings.showwarning = lambda message, category, *_: print("%s: %s" % (category.__name__, message))
 
-LOADED = [normalise_name(n) for n in os.environ.get("LAYA_MODELS", "english,multilingual").split(",") if n.strip()]
+# Railway's Trial and Free plans cap a service at 1 GB and 0.5 GB, and the smallest checkpoint
+# needs ~1.7 GB: its load is OOM-killed, and the service restarts until Railway gives up on it.
+# Stay up instead, and answer every call with the reason.
+MEMORY_GB = memory_limit()
+TOO_SMALL = ("This service has %.1f GB of RAM, and Laya's checkpoints need at least 1.7 GB. "
+             "Deploy it on a Hobby or Pro plan." % MEMORY_GB) if MEMORY_GB < 1.5 else ""
+
+LOADED = [] if TOO_SMALL else [normalise_name(n) for n in os.environ.get("LAYA_MODELS", "english,multilingual").split(",") if n.strip()]
 router = Router(models={"english": (MODELS_DIR, None),
                         "multilingual": (MODELS_DIR, "multilingual"),
                         "typed-decisions": (MODELS_DIR, "typed-decisions")},
-                max_loaded=len(LOADED))
+                max_loaded=len(LOADED) or 1)
 # Multilingual first: its load briefly needs ~2.3 GB on top of what it keeps, English ~0.8 GB,
 # so this order peaks ~1.3 GB lower than the other.
 for name in sorted(LOADED, key=lambda n: n != "multilingual"):
@@ -63,7 +81,7 @@ for name in sorted(LOADED, key=lambda n: n != "multilingual"):
     gc.collect()
     ctypes.CDLL("libc.so.6").malloc_trim(0)  # hand the load's scratch buffers back to the OS
     print("loaded %s in %.0fs" % (name, time.monotonic() - started))
-print("serving %s with %d threads" % (", ".join(LOADED), torch.get_num_threads()))
+print("WARNING: " + TOO_SMALL if TOO_SMALL else "serving %s with %d threads" % (", ".join(LOADED), torch.get_num_threads()))
 
 # One thread runs every forward pass: one at a time, since each already uses every thread torch
 # has, and always the same thread, so its heap is reused. Spread over the server's worker threads,
@@ -107,6 +125,11 @@ def authorized(creds: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(a
         raise HTTPException(401, "Missing or invalid API key", {"WWW-Authenticate": "Bearer"})
 
 
+def ready():
+    if TOO_SMALL:
+        raise HTTPException(503, TOO_SMALL)
+
+
 def checkpoint(req: SystemOneRequest, questions: dict) -> dict:
     """Which loaded checkpoint answers: the one named, or the router's pick for the text.
     TypeSafe model names (jev-latest, ...) mean the router, so SDK defaults just work."""
@@ -130,7 +153,7 @@ def checkpoint(req: SystemOneRequest, questions: dict) -> dict:
 
 
 app = FastAPI(title="Laya", version=RELEASE_DATE, redoc_url=None,
-              description="TypeSafe-compatible System One API. Authorize with your LAYA_API_KEY.")
+              description=TOO_SMALL or "TypeSafe-compatible System One API. Authorize with your LAYA_API_KEY.")
 
 
 @app.get("/", include_in_schema=False)
@@ -143,7 +166,7 @@ def health():
     return {"status": "ok", "models": LOADED}
 
 
-@app.get("/v1/models", dependencies=[Depends(authorized)])
+@app.get("/v1/models", dependencies=[Depends(authorized), Depends(ready)])
 def models():
     names = [{"name": "laya-auto", "description": "Routes each request by script and language: "
               + " or ".join(LOADED) + ". Also answers to TypeSafe names such as jev-latest.",
@@ -152,7 +175,7 @@ def models():
     return {"models": names}
 
 
-@app.post("/v1/systemone", dependencies=[Depends(authorized)])
+@app.post("/v1/systemone", dependencies=[Depends(authorized), Depends(ready)])
 async def system_one(req: SystemOneRequest):
     questions = {qid: q.model_dump() for qid, q in req.questions.items()}
     decision = checkpoint(req, questions)
