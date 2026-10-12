@@ -73,8 +73,9 @@ router = Router(models={"english": (MODELS_DIR, None),
                         "multilingual": (MODELS_DIR, "multilingual"),
                         "typed-decisions": (MODELS_DIR, "typed-decisions")},
                 max_loaded=len(LOADED) or 1)
-# Multilingual first: its load briefly needs ~2.3 GB on top of what it keeps, English ~0.8 GB,
-# so this order peaks ~1.3 GB lower than the other.
+# Multilingual first: under laya 0.3.5 its load briefly needed ~2.3 GB on top of what it keeps,
+# English ~0.8 GB, so this order peaked ~1.3 GB lower. 0.4.x loads leaner (both together now
+# peak ~0.1 GB above steady state); the order is kept as it costs nothing.
 for name in sorted(LOADED, key=lambda n: n != "multilingual"):
     started = time.monotonic()
     router.load(name)

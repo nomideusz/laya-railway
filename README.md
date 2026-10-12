@@ -60,7 +60,7 @@ Interactive docs, where you can authorize with the key and try requests, are at 
 
 | `LAYA_MODELS` | Memory | Throughput on 8 vCPU |
 | --- | --- | --- |
-| `english,multilingual` (default) | ~3.4 GB, peaking at ~4.3 GB while loading | 3.5–12 calls/s, depending on the checkpoint |
+| `english,multilingual` (default) | ~3.4 GB, peaking at ~3.5 GB while loading | 3.5–12 calls/s, depending on the checkpoint |
 | `multilingual` | ~1.7 GB | ~12 calls/s |
 | `english` | ~2 GB | ~3.5 calls/s |
 
