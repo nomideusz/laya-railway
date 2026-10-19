@@ -13,7 +13,7 @@
         "restartPolicyMaxRetries": 10
       },
       "source": {
-        "repo": "https://github.com/nomideusz/laya-railway",
+        "repo": "https://github.com/two-workspaces/laya",
         "rootDirectory": "/"
       },
       "variables": {

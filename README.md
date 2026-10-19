@@ -27,7 +27,7 @@ One service, no database or volume. The checkpoints ship inside the image.
 
 - [Laya on GitHub](https://github.com/NandhaKishorM/laya) and [on Hugging Face](https://huggingface.co/convaiinnovations/laya)
 - [TypeSafe API reference](https://docs.typesafe.ai/api) (the request and answer format)
-- [Template source on GitHub](https://github.com/nomideusz/laya-railway)
+- [Template source on GitHub](https://github.com/two-workspaces/laya)
 
 ### Implementation Details
 
