@@ -1,3 +1,4 @@
+# upgrade: skip  (Python held back on purpose; bump with the requirements)
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
