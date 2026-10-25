@@ -8,7 +8,7 @@ WORKDIR /app
 COPY requirements.txt .
 # Bump here; everything else in requirements.txt is laya's pinned dependency set.
 # upgrade: pypi laya
-ARG LAYA_VERSION=0.4.3
+ARG LAYA_VERSION=0.4.15
 RUN pip install -r requirements.txt "laya==${LAYA_VERSION}"
 
 # The two general-purpose checkpoints (English and multilingual) are baked in, so boots never
