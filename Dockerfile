@@ -6,7 +6,10 @@ ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
 
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+# Bump here; everything else in requirements.txt is laya's pinned dependency set.
+# upgrade: pypi laya
+ARG LAYA_VERSION=0.4.3
+RUN pip install -r requirements.txt "laya==${LAYA_VERSION}"
 
 # The two general-purpose checkpoints (English and multilingual) are baked in, so boots never
 # depend on Hugging Face. Pinned: a re-upload upstream would change every deploy's answers.
