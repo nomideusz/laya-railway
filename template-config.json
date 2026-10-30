@@ -3,9 +3,6 @@
   "828be89b-83d3-4ead-9cfd-433ad2322b3d": {
    "icon": "https://raw.githubusercontent.com/NandhaKishorM/laya/573e5b62696ba441230cd6be71d593331b5d23af/assets/logo-mark.svg",
    "name": "Laya",
-   "build": {
-    "dockerfilePath": "Dockerfile"
-   },
    "deploy": {
     "startCommand": null,
     "healthcheckPath": "/health",
@@ -13,8 +10,7 @@
     "restartPolicyMaxRetries": 10
    },
    "source": {
-    "repo": "https://github.com/two-workspaces/laya",
-    "rootDirectory": "/"
+    "image": "ghcr.io/two-workspaces/laya:671e888"
    },
    "variables": {
     "LAYA_API_KEY": {
