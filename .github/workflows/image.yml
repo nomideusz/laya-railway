@@ -1,0 +1,32 @@
+# Builds the image the Railway template deploys, so a deploy pulls a finished image instead of
+# installing torch and downloading the checkpoints on Railway's builders. Each push to main gets
+# ghcr.io/two-workspaces/laya:<short sha>; point template-config.json at it, then republish.
+name: Image
+on:
+  push:
+    branches: [main]
+    paths: ["Dockerfile", "requirements.txt", "server.py", ".github/workflows/image.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  image:
+    if: github.repository == 'two-workspaces/laya'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: ghcr.io/two-workspaces/laya:${{ env.SHORT_SHA }},ghcr.io/two-workspaces/laya:latest
+          labels: org.opencontainers.image.source=https://github.com/two-workspaces/laya
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -61,22 +61,37 @@ torch.set_num_threads(int(os.environ.get("LAYA_THREADS") or cpu_quota()))
 # Railway shows stderr as errors, and laya's load-time warnings are notes, not failures.
 warnings.showwarning = lambda message, category, *_: print("%s: %s" % (category.__name__, message))
 
-# Railway's Trial and Free plans cap a service at 1 GB and 0.5 GB, and the smallest checkpoint
-# needs ~1.7 GB: its load is OOM-killed, and the service restarts until Railway gives up on it.
-# Stay up instead, and answer every call with the reason.
-MEMORY_GB = memory_limit()
-TOO_SMALL = ("This service has %.1f GB of RAM, and Laya's checkpoints need at least 1.7 GB. "
-             "Deploy it on a Hobby or Pro plan." % MEMORY_GB) if MEMORY_GB < 1.5 else ""
+# A checkpoint whose load does not fit is OOM-killed, and the service restarts until Railway gives
+# up on it. Cgroup peaks under laya 0.4.17: multilingual 1.71 GB, english 2.01, both 3.39 (a load
+# now peaks at about what it keeps), plus ~10% for the API under load. typed-decisions is unmeasured;
+# it is ModernBERT-large like english.
+NEED_GB = {"multilingual": 1.9, "english": 2.2}
 
-LOADED = [] if TOO_SMALL else [normalise_name(n) for n in os.environ.get("LAYA_MODELS", "english,multilingual").split(",") if n.strip()]
+
+def needed_gb(names) -> float:
+    return sum(NEED_GB.get(n, NEED_GB["english"]) for n in names)
+
+
+# Multilingual first: under laya 0.3.5 its load briefly needed ~2.3 GB on top of what it keeps, so
+# this order peaked lower; it also makes multilingual, which reads every language, the one kept.
+MEMORY_GB = memory_limit()
+WANTED = sorted((normalise_name(n) for n in os.environ.get("LAYA_MODELS", "english,multilingual").split(",") if n.strip()),
+                key=lambda n: n != "multilingual")
+# Drop checkpoints from the end until the rest fits. With none left, stay up instead of crash-looping
+# (Trial and Free cap a service at 1 GB and 0.5 GB), and answer every call with the reason.
+LOADED = list(WANTED)
+while LOADED and needed_gb(LOADED) > MEMORY_GB:
+    LOADED.pop()
+TOO_SMALL = ("This service has %.1f GB of RAM, and Laya's checkpoints need at least %.1f GB. "
+             "Deploy it on a Hobby or Pro plan." % (MEMORY_GB, needed_gb(WANTED[:1]))) if not LOADED else ""
+if LOADED != WANTED and LOADED:
+    print("WARNING: %.1f GB of RAM fits %s, not %s; raise the memory limit to %.1f GB to load all of LAYA_MODELS"
+          % (MEMORY_GB, ", ".join(LOADED), ", ".join(WANTED), needed_gb(WANTED)))
 router = Router(models={"english": (MODELS_DIR, None),
                         "multilingual": (MODELS_DIR, "multilingual"),
                         "typed-decisions": (MODELS_DIR, "typed-decisions")},
                 max_loaded=len(LOADED) or 1)
-# Multilingual first: under laya 0.3.5 its load briefly needed ~2.3 GB on top of what it keeps,
-# English ~0.8 GB, so this order peaked ~1.3 GB lower. 0.4.x loads leaner (both together now
-# peak ~0.1 GB above steady state); the order is kept as it costs nothing.
-for name in sorted(LOADED, key=lambda n: n != "multilingual"):
+for name in LOADED:
     started = time.monotonic()
     router.load(name)
     gc.collect()
