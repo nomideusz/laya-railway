@@ -10,7 +10,7 @@
     "restartPolicyMaxRetries": 10
    },
    "source": {
-    "image": "ghcr.io/two-workspaces/laya:671e888"
+    "image": "ghcr.io/two-workspaces/laya:3605854"
    },
    "variables": {
     "LAYA_API_KEY": {
