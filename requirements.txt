@@ -4,6 +4,8 @@ torch==2.14.0+cpu
 transformers==5.17.0
 fastapi==0.141.1
 uvicorn==0.53.0
+# laya 0.4.23+ imports it; its own requirements are all pinned below.
+vegaml==0.15.0
 
 # Everything they pull in, pinned so a rebuild installs what was tested.
 annotated-doc==0.0.5
