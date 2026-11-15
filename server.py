@@ -21,9 +21,14 @@ from laya import Router
 from laya.router import normalise_name
 from pydantic import BaseModel, Field
 
-API_KEY = os.environ.get("LAYA_API_KEY", "")
-if not API_KEY:
-    raise SystemExit("LAYA_API_KEY is not set; refusing to serve an open endpoint")
+# Nothing a deployer sets may stop the process: an exit here crash-loops the service, Railway gives
+# up after its retries, and the deploy counts against the template's health until someone notices.
+# A missing key keeps the endpoint closed instead: every /v1 call answers 503 with the fix.
+API_KEY = os.environ.get("LAYA_API_KEY", "").strip()
+NO_KEY = "" if API_KEY else ("LAYA_API_KEY is not set, so the API stays closed. Set it in the service's "
+                             "Variables tab (any long random string) and redeploy.")
+if NO_KEY:
+    print("WARNING: " + NO_KEY)
 
 MODELS_DIR = os.environ.get("LAYA_MODELS_DIR", "/models/laya")
 RELEASE_DATE = "2026-09-20"  # the pinned Hugging Face revision (see Dockerfile)
@@ -57,7 +62,17 @@ def memory_limit() -> float:
     return float("inf")
 
 
-torch.set_num_threads(int(os.environ.get("LAYA_THREADS") or cpu_quota()))
+def threads() -> int:
+    wanted = os.environ.get("LAYA_THREADS", "").strip()
+    if wanted:
+        try:
+            return max(1, int(wanted))
+        except ValueError:
+            print("WARNING: LAYA_THREADS=%r is not a number; using the CPU quota" % wanted)
+    return cpu_quota()
+
+
+torch.set_num_threads(threads())
 # Railway shows stderr as errors, and laya's load-time warnings are notes, not failures.
 warnings.showwarning = lambda message, category, *_: print("%s: %s" % (category.__name__, message))
 
@@ -75,7 +90,33 @@ def needed_gb(names) -> float:
 # Multilingual first: under laya 0.3.5 its load briefly needed ~2.3 GB on top of what it keeps, so
 # this order peaked lower; it also makes multilingual, which reads every language, the one kept.
 MEMORY_GB = memory_limit()
-WANTED = sorted((normalise_name(n) for n in os.environ.get("LAYA_MODELS", "english,multilingual").split(",") if n.strip()),
+SUBDIRS = {"english": "", "multilingual": "multilingual", "typed-decisions": "typed-decisions"}
+
+
+def wanted_models(raw: str) -> list[str]:
+    """LAYA_MODELS as checkpoint names. A name it can't serve is skipped with a warning rather than
+    ending the boot: `laya-english` (the API's model name), a typo, or a checkpoint that isn't in the image."""
+    names = []
+    for item in (s.strip().lower() for s in raw.split(",")):
+        if not item:
+            continue
+        try:
+            name = normalise_name(item.removeprefix("laya-"))
+        except ValueError:
+            print("WARNING: LAYA_MODELS has %r, which isn't a Laya checkpoint (english, multilingual); skipped" % item)
+            continue
+        if not os.path.exists(os.path.join(MODELS_DIR, SUBDIRS.get(name, name), "model.safetensors")):
+            print("WARNING: LAYA_MODELS has %r, but this image only ships english and multilingual; skipped" % item)
+            continue
+        if name not in names:
+            names.append(name)
+    if not names:
+        print("WARNING: nothing usable in LAYA_MODELS=%r; loading english,multilingual" % raw)
+        names = ["english", "multilingual"]
+    return names
+
+
+WANTED = sorted(wanted_models(os.environ.get("LAYA_MODELS", "english,multilingual")),
                 key=lambda n: n != "multilingual")
 # Drop checkpoints from the end until the rest fits. With none left, stay up instead of crash-looping
 # (Trial and Free cap a service at 1 GB and 0.5 GB), and answer every call with the reason.
@@ -91,12 +132,19 @@ router = Router(models={"english": (MODELS_DIR, None),
                         "multilingual": (MODELS_DIR, "multilingual"),
                         "typed-decisions": (MODELS_DIR, "typed-decisions")},
                 max_loaded=len(LOADED) or 1)
-for name in LOADED:
+for name in list(LOADED):
     started = time.monotonic()
-    router.load(name)
+    try:
+        router.load(name)
+    except Exception as e:  # a broken checkpoint costs that checkpoint, not the whole service
+        LOADED.remove(name)
+        print("WARNING: could not load %s (%s: %s); serving without it" % (name, type(e).__name__, e))
+        continue
     gc.collect()
     ctypes.CDLL("libc.so.6").malloc_trim(0)  # hand the load's scratch buffers back to the OS
     print("loaded %s in %.0fs" % (name, time.monotonic() - started))
+if not LOADED and not TOO_SMALL:
+    TOO_SMALL = "No Laya checkpoint could be loaded; the deploy logs say why."
 print("WARNING: " + TOO_SMALL if TOO_SMALL else "serving %s with %d threads" % (", ".join(LOADED), torch.get_num_threads()))
 
 # One thread runs every forward pass: one at a time, since each already uses every thread torch
@@ -137,13 +185,15 @@ class SystemOneRequest(BaseModel):
 
 
 def authorized(creds: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False))):
+    if NO_KEY:  # closed either way; say how to open it
+        raise HTTPException(503, NO_KEY)
     if creds is None or not hmac.compare_digest(creds.credentials.encode(), API_KEY.encode()):
         raise HTTPException(401, "Missing or invalid API key", {"WWW-Authenticate": "Bearer"})
 
 
 def ready():
-    if TOO_SMALL:
-        raise HTTPException(503, TOO_SMALL)
+    if NO_KEY or TOO_SMALL:
+        raise HTTPException(503, NO_KEY or TOO_SMALL)
 
 
 def checkpoint(req: SystemOneRequest, questions: dict) -> dict:
