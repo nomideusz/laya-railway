@@ -4,8 +4,8 @@ torch==2.14.0+cpu
 transformers==5.17.0
 fastapi==0.141.1
 uvicorn==0.53.0
-# laya 0.4.23+ imports it; its own requirements are all pinned below.
-vegaml==0.15.0
+# laya 0.4.23+ imports it (0.5.2+ needs 0.18); its own requirements are all pinned below.
+vegaml==0.18.0
 # laya 0.4.28+ requires it (signed calibration policies).
 cryptography==50.0.2
 
